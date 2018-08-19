@@ -21,12 +21,11 @@
 
 import re,urlparse, traceback
 
-from urllib import urlencode
+import urllib
 
 from threading import Thread
 from bs4 import BeautifulSoup
 from resources.lib.modules import debrid, cfscrape, source_utils
-
 
 class source:
     def __init__(self):
@@ -97,20 +96,25 @@ class source:
                 url['season'] = '%02d' % int(url['season'])
                 url['episode'] = '%02d' % int(url['episode'])
                 query = '%s S%sE%s' % (url['tvshowtitle'], url['season'], url['episode'])
+                url = self.search_link % query
             else:
                 query = '%s %s' % (url['title'], url['year'])
-
-                query = urlencode(query)
-
-            url = self.search_link % query
+                url = self.search_link % urllib.quote_plus(query)
+                
             url = urlparse.urljoin(self.base_link, url)
 
             r = self.scraper.get(url)
 
             r = BeautifulSoup(r.text, 'html.parser')
             posts = r.findAll('h2')
+            
+            query = re.sub('(\\\|/| -|:|;|\*|\?|"|\'|<|>|\|)|-', '', query)
+            query = re.sub('\.', ' ', query)
+            
             for post in posts:
-                if query.lower() in post.text.lower():
+                posttext = post.text.lower()
+                posttext = re.sub('(\\\|/| -|:|;|\*|\?|"|\'|<|>|\|)|-', '', posttext)
+                if query.lower() in posttext:
                     postLink = post.find('a')['href']
                     self.threads.append(Thread(target=self.getPost, args=(postLink,)))
 

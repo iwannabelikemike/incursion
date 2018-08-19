@@ -3,18 +3,17 @@
 ###          Change Log           ###
 ###                               ###
 ###        Current Version        ###
-###            v0.1.13            ###
+###            v0.1.16            ###
 #####################################
+
+v0.1.16 (Aug-2018)
+                -First attempt to clean up english scrapers
 
 V0.1.15 (Feb-2018)
 		v0.1.15 (FEB-2018)
-
 		- Fixed "Trakt - Mark as Watched" Issues
-
 		- Added Trakt Bookmarks Function
-
 		- Added Auto Resume Option
-
 		- Trakt On Deck - Reversed to show last played first.
 
 

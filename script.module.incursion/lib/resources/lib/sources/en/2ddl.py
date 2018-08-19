@@ -1,85 +1,113 @@
-# -*- coding: utf-8 -*-
+# -*- coding: UTF-8 -*-
+#######################################################################
+ # ----------------------------------------------------------------------------
+ # "THE BEER-WARE LICENSE" (Revision 42):
+ # @tantrumdev wrote this file.  As long as you retain this notice you
+ # can do whatever you want with this stuff. If we meet some day, and you think
+ # this stuff is worth it, you can buy me a beer in return. - Muad'Dib
+ # ----------------------------------------------------------------------------
+#######################################################################
 
-'''
-    Incursion Add-on
-    Copyright (C) 2016 Incursion
+# Addon Name: Placenta
+# Addon id: plugin.video.placenta
+# Addon Provider: MuadDib
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-'''
-
-import requests
-import re
+import re,traceback,urllib,urlparse
 
 from resources.lib.modules import cleantitle
-from resources.lib.modules.source_utils import get_quality_simple
+from resources.lib.modules import client
+from resources.lib.modules import debrid
+from resources.lib.modules import source_utils
+from resources.lib.modules import log_utils
 
 class source:
     def __init__(self):
         self.priority = 1
         self.language = ['en']
-        self.domains = ['http://2ddl.io/']
-        self.base_link = 'http://2ddl.io'
-        self.search_link = '/search/%s/feed/rss2/'
+        self.domains = ['2ddl.io']
+        self.base_link = 'http://2ddl.io/'
+        self.search_link = '/?s=%s'
 
     def movie(self, imdb, title, localtitle, aliases, year):
-        url = title.replace(" ", "+")
-        return url
+        try:
+            url = {'imdb': imdb, 'title': title, 'year': year}
+            url = urllib.urlencode(url)
+            return url
+        except:
+            failure = traceback.format_exc()
+            log_utils.log('2DDL - Exception: \n' + str(failure))
+            return
 
 
     def tvshow(self, imdb, tvdb, tvshowtitle, localtvshowtitle, aliases, year):
-        url = tvshowtitle
-        return url
-
+        try:
+            url = {'imdb': imdb, 'tvdb': tvdb, 'tvshowtitle': tvshowtitle, 'year': year}
+            url = urllib.urlencode(url)
+            return url
+        except:
+            failure = traceback.format_exc()
+            log_utils.log('2DDL - Exception: \n' + str(failure))
+            return
 
     def episode(self, url, imdb, tvdb, title, premiered, season, episode):
+        try:
+            if url == None: return
 
-        if len(season) == 1:
-            season = "0" + season
-        if len(episode) == 1:
-            episode = "0" + episode
-
-        searchterm = (url + "+s" + season + "e" + episode).replace(" ", "+")
-        return searchterm
+            url = urlparse.parse_qs(url)
+            url = dict([(i, url[i][0]) if url[i] else (i, '') for i in url])
+            url['title'], url['premiered'], url['season'], url['episode'] = title, premiered, season, episode
+            url = urllib.urlencode(url)
+            return url
+        except:
+            failure = traceback.format_exc()
+            log_utils.log('2DDL - Exception: \n' + str(failure))
+            return
 
     def sources(self, url, hostDict, hostprDict):
-        links = []
-        sources = []
+        try:
+            sources = []
+            if url == None: return sources
 
-        response = requests.get(self.base_link + self.search_link % url)
-        capture = re.findall(r'<singlelink><\/singlelink>((?s).*)<download><\/download>', response.text)
+            data = urlparse.parse_qs(url)
+            data = dict([(i, data[i][0]) if data[i] else (i, '') for i in data])
 
-        for i in capture:
-            links.append(re.findall(r'href="(.*?)"', i))
+            title = data['tvshowtitle'] if 'tvshowtitle' in data else data['title']
 
-        links = [item for sublist in links for item in sublist]
+            hdlr = 'S%02dE%02d' % (int(data['season']), int(data['episode'])) if 'tvshowtitle' in data else data['year']
 
-        for i in links:
-            for h in hostprDict:
-                if h in i:
-                    if not '.rar' in i:
-                        quality = get_quality_simple(i)
-                        video = {}
-                        video['url'] = i
-                        video['quality'] = quality
-                        video['source'] = h
-                        video['debridonly'] = True
-                        video['language'] = 'en'
-                        video['info'] = ''
-                        video['direct'] = False
-                        sources.append(video)
+            query = '%s S%02dE%02d' % (data['tvshowtitle'], int(data['season']), int(data['episode'])) if 'tvshowtitle' in data else '%s %s' % (data['title'], data['year'])
+            query = re.sub('(\\\|/| -|:|;|\*|\?|"|<|>|\|)', ' ', query).replace('\'', '')
 
-        return sources
+            url = self.search_link % urllib.quote_plus(query)
+            url = urlparse.urljoin(self.base_link, url)
+            log_utils.log('2DDL - sources - url: ' + str(url))
+            html = client.request(url)
+            url_list = re.compile('<h2><a href="([^"]+)"',re.DOTALL).findall(html)
+
+            hostDict = hostprDict + hostDict
+
+            for url in url_list:
+                if cleantitle.get(title) in cleantitle.get(url):
+                    html = client.request(url)
+                    links = re.compile('href="([^"]+)" rel="nofollow"',re.DOTALL).findall(html)
+                    for vid_url in links:
+                        if 'ouo.io' in vid_url:
+                            continue
+                        if 'sh.st' in vid_url:
+                            continue
+                        if 'linx' in vid_url:
+                            continue
+                        if '.rar' not in vid_url:
+                            if '.srt' not in vid_url:
+                                quality,info = source_utils.get_release_quality(url, vid_url)
+                                host = vid_url.split('//')[1].replace('www.','')
+                                host = host.split('/')[0].lower()
+                                sources.append({'source': host, 'quality': quality, 'language': 'en', 'url': vid_url, 'info': info, 'direct': False, 'debridonly': False})
+            return sources
+        except:
+            failure = traceback.format_exc()
+            log_utils.log('2DDL - Exception: \n' + str(failure))
+            return sources
 
     def resolve(self, url):
-            return url
+        return url
